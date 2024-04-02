@@ -1,0 +1,552 @@
+# Importing Necessary Libraries
+
+```{r}
+library(visdat)
+library(ggplot2)
+library(ggpubr)
+library(glmnet)
+library(rsample)
+library(MASS)
+```
+
+# Reading CSV File
+
+```{r}
+customer_shopping = read.csv("D:/Masters/Statistics/Assignment/customer_shopping_data.csv")
+```
+
+# Understanding the Dataset & Data Cleaning
+
+```{r}
+head(customer_shopping)
+```
+
+```{r}
+tail(customer_shopping)
+```
+
+```{r}
+summary(customer_shopping)
+```
+
+# Removing customer_id and invoice_no from Data set
+
+```{r}
+customer_shopping <- customer_shopping[, !(names(customer_shopping) %in% c("invoice_no", "customer_id"))]
+head(customer_shopping)
+```
+
+# Checking for missing values
+
+```{r}
+missing_values <- is.na(customer_shopping)
+missing_count <- colSums(missing_values)
+print(missing_count)
+```
+
+# Checking the categories of the Categorical Data
+
+```{r}
+unique_genders <- unique(customer_shopping$gender)
+print(unique_genders)
+unique_category <- unique(customer_shopping$category)
+print(unique_category)
+unique_payment_method <- unique(customer_shopping$payment_method)
+print(unique_payment_method)
+unique_shopping_mall <- unique(customer_shopping$shopping_mall)
+print(unique_shopping_mall)
+```
+
+# Creating customer_dataset to work with numerical values
+
+```{r}
+customer_dataset <- customer_shopping
+# Convert gender to numerical values
+customer_dataset$gender <- as.numeric(factor(customer_dataset$gender, levels =
+unique(customer_dataset$gender)))
+# Convert category to numerical values
+customer_dataset$category <- as.numeric(factor(customer_dataset$category, levels = unique(customer_dataset$category)))
+# Convert payment_method to numerical values
+customer_dataset$payment_method <- as.numeric(factor(customer_dataset$payment_method, levels = unique(customer_dataset$payment_method)))
+# Convert shopping_mall to numerical values
+customer_dataset$shopping_mall <- as.numeric(factor(customer_dataset$shopping_mall, levels = unique(customer_dataset$shopping_mall)))
+head(customer_dataset)
+```
+
+# Task 1.1
+
+```{r}
+# Convert invoice_date to Date format
+customer_dataset$invoice_date <- as.Date(customer_dataset$invoice_date, format="%d/%m/%Y")
+
+#Creating min and max monthly frequency variables
+min_frequency = c(as.numeric(format(min(customer_dataset$invoice_date), "%Y")),
+                  as.numeric(format(min(customer_dataset$invoice_date), "%m")))
+max_frequency = c(as.numeric(format(max(customer_dataset$invoice_date), "%Y")),
+                  as.numeric(format(max(customer_dataset$invoice_date), "%m")))
+# Create time series objects for each input
+customer_age.ts <- ts(customer_dataset$age,
+                           start = min_frequency,
+                           end = max_frequency,
+                           frequency = 12)
+customer_category.ts <- ts(customer_dataset$category,
+                           start = min_frequency,
+                           end = max_frequency,
+                           frequency = 12)
+customer_quantity.ts <- ts(customer_dataset$quantity,
+                           start = min_frequency,
+                           end = max_frequency,
+                           frequency = 12)
+customer_price.ts <- ts(customer_dataset$price,
+                           start = min_frequency,
+                           end = max_frequency,
+                           frequency = 12)
+customer_payment_method.ts <- ts(customer_dataset$payment_method,
+                           start = min_frequency,
+                           end = max_frequency,
+                           frequency = 12)
+
+
+# Function to plot time series using ggplot
+plot_time_series <- function(ts_data, title, x_label, y_label) {
+  ggplot(data = NULL, aes(x = time(ts_data), y = ts_data)) +
+    geom_line(color = "blue", linewidth = 1) +
+    labs(title = title, x = x_label, y = y_label)
+}
+
+# Plotting each time series input
+plot_time_series(customer_age.ts, "Time series plot of Age", "Invoice Date", "Age")
+plot_time_series(customer_category.ts, "Time series plot of Category", "Invoice Date", "Category")
+plot_time_series(customer_quantity.ts, "Time series plot for Quantity Taken by Customers", "Invoice Date", "Quantity")
+plot_time_series(customer_price.ts, "Time series plot for Price", "Invoice Date", "Price")
+plot_time_series(customer_payment_method.ts, "Time series plot for Payment Method", "Invoice Date", "Payment Method")
+
+```
+
+```{r}
+# Plot the time series of output y
+# Extract year and month from invoice_date
+customer_dataset$year_month <- format(customer_dataset$invoice_date, "%Y-%m")
+# Aggregate quantity by year_month
+total_quantity <- aggregate(quantity ~ year_month, data = customer_dataset, sum)
+# Convert year_month to Date format for plotting
+total_quantity$year_month <- as.Date(paste0(total_quantity$year_month, "-01"))
+# Create a time series object with monthly frequency
+customer_dataset.ts <- ts(total_quantity$quantity,
+                           start = c(as.numeric(format(min(total_quantity$year_month), "%Y")),
+                                     as.numeric(format(min(total_quantity$year_month), "%m"))),
+                           end = c(as.numeric(format(max(total_quantity$year_month), "%Y")),
+                                   as.numeric(format(max(total_quantity$year_month), "%m"))),
+                           frequency = 12)
+# Plot the time series data
+ggplot(data = NULL, aes(x = time(customer_dataset.ts), y = customer_dataset.ts)) +
+  geom_line(color = "blue", linewidth = 1) +
+  labs(title = "Time Series Plot of Total Quantity Sold (Grouped by Year-Month)",
+       x = "Year-Month") +
+  scale_y_continuous(name="Total Quantity", limits=c(0, 12000))
+```
+
+# Task 1.2 Distribution
+
+```{r}
+# Histogram & Density Plot for Age
+ggplot(customer_dataset, aes(x = age, y = after_stat(density))) +
+  geom_histogram(binwidth=1, fill = "skyblue", color = "black") +
+  geom_density(color = "red", linewidth = 1) +
+  labs(title = "Distribution of Age", x = "Age", y = "Frequency")
+
+# Histogram and Density Plot for Price
+ggplot(customer_dataset, aes(x = price, y = after_stat(density))) +
+  geom_histogram(binwidth = 150, fill = "skyblue", color = "black") +
+  geom_density(color = "red", linewidth = 1) +
+  labs(title = "Distribution of Price", x = "Price", y = "Frequency")
+
+# Histogram and Density for Quantity
+ggplot(customer_dataset, aes(x = quantity, y = after_stat(density))) +
+  geom_histogram(binwidth = 0.3, fill = "skyblue", color = "black") +
+  geom_density(color = "red")+
+  labs(title = "Distribution of Quantity", x = "Quantity", y = "Frequency")
+
+# Bar plot for Category
+ggplot(customer_dataset, aes(x = category)) +
+  geom_bar(fill = "skyblue", color = "black") +
+  labs(title = "Distribution of Category",x="Category", y = "Count") +
+  scale_x_discrete(name ="Category", limits=c("Clothing", "Shoes", "Books", "Cosmetics", "Food & Beverage", "Toys", "Technology", "Souvenir"))
+
+# Bar plot for Gender
+ggplot(customer_dataset, aes(x = gender)) +
+  geom_bar(fill = "skyblue", color = "black") +
+  labs(title = "Distribution of Gender",x="Gender", y = "Count") +
+  scale_x_discrete(name ="Gender", limits=c("Femaile", "Male"))
+
+# Bar plot for Payment Method
+ggplot(customer_dataset, aes(x = payment_method)) +
+  geom_bar(fill = "skyblue", color = "black") +
+  labs(title = "Distribution of Payment Method", y = "Count")+
+  scale_x_discrete(name ="Payment Method", limits=c("Credit Card", "Debit Card", "Cash"))
+
+# Bar plot for Shopping Mall
+ggplot(customer_dataset, aes(x = shopping_mall)) +
+  geom_bar(fill = "skyblue", color = "black") +
+  labs(title = "Distribution of Shopping Mall", x = "Shopping Mall", y = "Count") +
+  scale_x_discrete(name ="Shopping Mall", limits=c("Kanyon", "Forum Istanbul", "Metrocity", "Metropol AVM", "Istinye Park", "Mall of Istanbul", "Emaar Square Mall", "Cevahir AVM", "Viaport Outlet", "Zorlu Center"))
+```
+
+# Task 1.3 Correlation
+
+```{r}
+# Plotting Correlation between Inputs and quantity
+ggplot(data = NULL, aes(x = customer_dataset$age, y = customer_dataset$quantity)) +
+  geom_point(aes(colour = factor(customer_shopping$gender))) +
+  stat_cor() +
+  labs(title = "Correlation between Age and Quantity Signal", x = "Age", y = "Quantity")
+
+ggplot(data = NULL, aes(x = customer_dataset$price, y = customer_dataset$quantity)) +
+  geom_point(aes(colour = factor(customer_shopping$payment_method))) +
+  stat_cor() +
+  labs(title = "Correlation between Price and Quantity Signal", x = "Price", y = "Quantity")
+
+ggplot(data = NULL, aes(x = customer_dataset$category, y = customer_dataset$quantity)) +
+  geom_point(aes(colour = factor(customer_shopping$gender))) +
+  stat_cor() +
+  labs(title = "Correlation between Category and Quantity Signal", x = "Category", y = "Quantity")
+
+ggplot(data = NULL, aes(x = customer_dataset$payment_method, y = customer_dataset$quantity)) +
+  geom_point(aes(colour = factor(customer_shopping$payment_method))) +
+  stat_cor() +
+  labs(title = "Correlation between Payment Method and Quantity Signal", x = "Payment Method", y = "Quantity")
+```
+
+# Checking Correlation Coefficient for all inputs
+
+```{r}
+x <- customer_dataset[, !(names(customer_dataset) %in%
+c("invoice_date", "year_month"))]
+cor(x)
+```
+
+# Task 2 Regression
+
+```{r}
+# Setting predictor variables and creating design matrix
+x$X1 <- customer_dataset$age
+x$X2 <- customer_dataset$category
+x$X3 <- customer_dataset$price
+x$X4 <- customer_dataset$payment_method
+x <- x[, c("X1", "X2", "X3", "X4")]
+x <- as.matrix(x)
+
+# Setting response variable
+y <- as.matrix(customer_dataset$quantity)
+
+# Adding columns of ones for intercept
+ones <- matrix(1, length(x)/4,1)
+```
+
+# Task 2.1 Estimate Model Parameters
+
+```{r}
+# Fit a ridge regression model
+alpha <- 0 # 0 for ridge regression
+lambda <- 1 # Adjust the lambda value as needed
+# calculating theta hat of the model 1
+Y1 <- cbind(ones,(x[,"X4"]),(x[,"X1"])^2,(x[,"X1"])^3,(x[,"X2"])^4,(x[,"X1"])^4)
+ridge_model1 <- glmnet(Y1, y, alpha = alpha, lambda = lambda)
+thetaHatModel1 = coefficients(ridge_model1)
+print(thetaHatModel1)
+# calculating theta hat of the model 2
+Y2 <- cbind(ones,(x[,"X4"]),(x[,"X1"])^3,(x[,"X3"])^4)
+ridge_model2 <- glmnet(Y2, y, alpha = alpha, lambda = lambda)
+thetaHatModel2 = coefficients(ridge_model2)
+print(thetaHatModel2)
+# calculating theta hat of the model 3
+Y3 <- cbind(ones,(x[,"X3"])^3,(x[,"X3"])^4)
+ridge_model3 <- glmnet(Y3, y, alpha = alpha, lambda = lambda)
+thetaHatModel3 = coefficients(ridge_model3)
+print(thetaHatModel3)
+# calculating theta hat of the model 4
+Y4 <- cbind(ones,(x[,"X2"]),(x[,"X1"])^3,(x[,"X3"])^4)
+ridge_model4 <- glmnet(Y4, y, alpha = alpha, lambda = lambda)
+thetaHatModel4 = coefficients(ridge_model4)
+print(thetaHatModel4)
+# calculating theta hat of the model 5
+Y5 <- cbind(ones,(x[,"X4"]),(x[,"X1"])^2,(x[,"X1"])^3, (x[,"X3"]^4))
+ridge_model5 <- glmnet(Y5, y, alpha = alpha, lambda = lambda)
+thetaHatModel5 = coefficients(ridge_model5)
+print(thetaHatModel5)
+```
+
+# Task 2.2 RSS
+
+```{r}
+Y_hat_ridge1 <- predict(ridge_model1, s = lambda, newx = Y1)
+# Calculate residuals
+residuals_ridge <- y - Y_hat_ridge1
+# Calculate RSS for the ridge regression model
+RSS_ridge <- sum(residuals_ridge^2)
+# Extract coefficients for the specified lambda
+coefficients_ridge <- coef(ridge_model1, s =lambda)
+# Map coefficients to the corresponding columns of model1
+Y_hat_m1 <- as.matrix(Y1) %*% coefficients_ridge[-1] # Exclude the intercept term
+# Calculate RSS for Model 1
+residuals_m1 <- y - Y_hat_m1
+RSS_Model_1 <- sum(residuals_m1^2)
+print(RSS_Model_1)
+# Calculate RSS for Model 2
+Y_hat_ridge2 <- predict(ridge_model2, s = lambda, newx = Y2)
+residuals_ridge <- y - Y_hat_ridge2
+RSS_ridge <- sum(residuals_ridge^2)
+coefficients_ridge <- coef(ridge_model2, s =lambda)
+Y_hat_m2 <- as.matrix(Y2) %*% coefficients_ridge[-1]
+residuals_m2 <- y - Y_hat_m2
+RSS_Model_2 <- sum(residuals_m2^2)
+print(RSS_Model_2)
+# Calculate RSS for Model 3
+Y_hat_ridge3 <- predict(ridge_model3, s = lambda, newx = Y3)
+residuals_ridge <- y - Y_hat_ridge3
+RSS_ridge <- sum(residuals_ridge^2)
+coefficients_ridge <- coef(ridge_model3, s =lambda)
+Y_hat_m3 <- as.matrix(Y3) %*% coefficients_ridge[-1]
+residuals_m3 <- y - Y_hat_m3
+RSS_Model_3 <- sum(residuals_m3^2)
+print(RSS_Model_3)
+# Calculate RSS for Model 4
+Y_hat_ridge4 <- predict(ridge_model4, s = lambda, newx = Y4)
+residuals_ridge <- y - Y_hat_ridge4
+RSS_ridge <- sum(residuals_ridge^2)
+coefficients_ridge <- coef(ridge_model4, s =lambda)
+Y_hat_m4 <- as.matrix(Y4) %*% coefficients_ridge[-1]
+residuals_m4 <- y - Y_hat_m4
+RSS_Model_4 <- sum(residuals_m4^2)
+print(RSS_Model_4)
+# Calculate RSS for Model 5
+Y_hat_ridge5 <- predict(ridge_model5, s = lambda, newx = Y5)
+residuals_ridge <- y - Y_hat_ridge5
+RSS_ridge <- sum(residuals_ridge^2)
+coefficients_ridge <- coef(ridge_model5, s =lambda)
+Y_hat_m5 <- as.matrix(Y5) %*% coefficients_ridge[-1]
+residuals_m5 <- y - Y_hat_m5
+RSS_Model_5 <- sum(residuals_m5^2)
+print(RSS_Model_5)
+```
+
+# Task 2.3 Log Likelihood Function
+
+```{r}
+N=length(y)
+
+#Calculating the Variance of Model 1
+Variance_modell=RSS_Model_1/(N-1)
+Variance_modell
+
+#Calculating the log-likelihood of Model 1
+likehood_Model_1 = -(N/2)*(log(2*pi))-(N/2)*(log(Variance_modell))- (1/(2*Variance_modell))*RSS_Model_1
+likehood_Model_1
+
+#Calculating the Variance of Model 2
+Variance_model2=RSS_Model_2/(N-1)
+Variance_model2
+
+#Calculating the log-likelihood of Model 2
+likehood_Model_2 = -(N/2)*(log(2*pi))-(N/2)*(log(Variance_model2))-
+(1/(2*Variance_model2))*RSS_Model_2
+likehood_Model_2
+
+#Calculating the Variance of Model 3
+Variance_model3=RSS_Model_3/(N-1)
+Variance_model3
+
+#Calculating the log-likelihood of Model 3
+likehood_Model_3 = -(N/2)*(log(2*pi))-(N/2)*(log(Variance_model3))-
+(1/(2*Variance_model3))*RSS_Model_3
+likehood_Model_3
+
+#Calculating the Variance of Model 4
+Variance_model4=RSS_Model_2/(N-1)
+Variance_model4
+
+#Calculating the log-likelihood of Model 4
+likehood_Model_4 = -(N/2)*(log(2*pi))-(N/2)*(log(Variance_model4))-
+(1/(2*Variance_model4)) *RSS_Model_4
+likehood_Model_4
+
+#Calculating the Variance of Model 5
+Variance_model5=RSS_Model_5/(N-1)
+Variance_model5
+
+#Calculating the log-likelihood of Model 5
+likehood_Model_5 = -(N/2)*(log(2*pi))-(N/2)*(log(Variance_model5))-
+(1/(2*Variance_model5))*RSS_Model_5
+
+likehood_Model_5
+```
+
+# Task 2.4 AIC & BIC
+
+```{r}
+# Evaluating AIC and BIC of all models
+K_model1<-length(thetaHatModel1)
+print(paste("Model 1 Parameters No.:", K_model1))
+AIC_model1=2*K_model1-2*likehood_Model_1
+print(paste("Model 1 AIC:",AIC_model1))
+BIC_model1=K_model1*log(N)-2*likehood_Model_1
+print(paste("Model 1 BIC:",BIC_model1))
+
+K_model2<-length(thetaHatModel2)
+print(paste("Model 2 Parameters No.:",K_model2))
+AIC_model2=2*K_model2-2*likehood_Model_2
+print(paste("Model 2 AIC:",AIC_model2))
+BIC_model2=K_model2*log(N)-2*likehood_Model_2
+print(paste("Model 2 BIC:",BIC_model2))
+
+K_model3<-length(thetaHatModel3)
+print(paste("Model 3 Parameters No.:",K_model3))
+AIC_model3=2*K_model3-2*likehood_Model_3
+print(paste("Model 3 AIC:",AIC_model3))
+BIC_model3=K_model3*log(N)-2*likehood_Model_3
+print(paste("Model 3 BIC:",BIC_model3))
+
+K_model4<-length(thetaHatModel4)
+print(paste("Model 4 Paramerets No.:",K_model4))
+AIC_model4=2*K_model4-2*likehood_Model_4
+print(paste("Model 4 AIC:",AIC_model4))
+BIC_model4=K_model4*log(N)-2*likehood_Model_4
+print(paste("Model 4 BIC:",BIC_model4))
+
+K_model5<-length(thetaHatModel5)
+print(paste("Model 5 Parameters No.:",K_model5))
+AIC_model5=2*K_model5-2*likehood_Model_5
+print(paste("Model 5 AIC:",AIC_model5))
+BIC_model5=K_model5*log(N)-2*likehood_Model_5
+print(paste("Model 5 BIC:",BIC_model5))
+```
+
+# Task 2.5 Q-Q Plot
+
+```{r}
+# Error of model
+model1_error <- y-Y_hat_m1
+
+# Plotting the graph QQplot and QQ line of model 1
+qqnorm(model1_error, col = "skyblue", main = "QQ plot of model 1")
+qqline(model1_error, col = "red",lwd=1)
+
+model2_error <- y-Y_hat_m2
+
+# Plotting the graph QQplot and Q line of model 2
+qqnorm(model2_error, col = "skyblue", main = "QQ plot of model 2")
+qqline(model2_error, col = "red",lwd=1)
+
+model3_error <- y-Y_hat_m3
+
+# Plotting the graph QQplot and QQ line of model 3
+qqnorm(model3_error, col = "skyblue", main = "QQ plot of model 3")
+qqline(model3_error, col = "red",lwd=1)
+
+model4_error <- y-Y_hat_m4
+
+# Plotting the graph QQelet and QQ line of model 4
+qqnorm(model4_error, col = "skyblue",main = "QQ plot of model 4")
+qqline(model4_error, col = "red",lwd=1)
+
+model5_error <- y-Y_hat_m5
+
+# Plotting the graph QQplot and QQ line of model 5
+qqnorm(model5_error, col = "skyblue", main = "QQ plot of model 5'")
+qqline(model5_error, col = "red", lwd=1)
+```
+
+# Task 2.7 Testing Data & Model Prediction
+
+```{r}
+# Dividing the data into training and testing sets int 7:3 ratio (70% training, 30% testing)
+set.seed(123) # Set seed for reproducibility
+split_X <- initial_split(data = as.data.frame(x), prop = 0.7)
+split_Y <- initial_split(data = as.data.frame(y), prop = 0.7)
+
+X_training_set <- training(split_X)
+X_testing_set <- testing(split_X)
+Y_training_set <- as.matrix(training(split_Y))
+Y_testing_set <- as.matrix(testing(split_Y))
+
+# Create the design matrix for the selected 'best' model
+traning_ones <- matrix(1, nrow = nrow(X_training_set), ncol = 1)
+
+X_training_model <- cbind(traning_ones, X_training_set[,"X2"], (X_training_set[,"X1"])^3, (X_training_set[,"X3"])^4)
+
+theta_hat <- ginv(t(X_training_model) %*% X_training_model) %*% t(X_training_model)%*% Y_training_set
+
+# Create the design matrix for the testing data using the same model equation
+traning_ones_test <- matrix(1, nrow = nrow(X_testing_set), ncol = 1)
+X_testing_model <- cbind(traning_ones_test, X_testing_set[,"X2"],
+(X_testing_set[,"X1"])^3, (X_testing_set[,"X3"])^4)
+
+# Calculate model predictions on the testing data
+Y_testing_hat <- X_testing_model %*% theta_hat
+
+# Evaluating 95% confidence intervals for the model predictions
+z <- qnorm(0.975) # Z-score for 95% confidence interval
+n_len <- nrow(X_testing_model)
+error <- Y_testing_set - Y_testing_hat
+valid_indices <- (error != 0) # Check for non-zero error values
+
+# Ensure that the values inside sqrt are non-negative using abs function
+C_I_1 <- ifelse(valid_indices, z * sqrt(abs(error * (1 - error)) / n_len), 0)
+C_I_2 <- ifelse(valid_indices, z * sqrt(abs(error * (1 + error)) / n_len), 0)
+
+# Plotting with ggplot
+ggplot(data=NULL, aes(x = 1:n_len, y = Y_testing_set, color = "Testing Data")) +
+  geom_point(aes(y = Y_testing_set, color = "Testing Data"), size = 3) +  # Plot testing data points
+  geom_point(aes(y = Y_testing_hat, color = "Model Predictions"), size = 3, na.rm = TRUE) +  # Plot model predictions
+  geom_errorbar(aes(ymin = Y_testing_hat - C_I_1, ymax = Y_testing_hat + C_I_2, color = "95% CI"), 
+                 width = 0.2) +  # Add confidence interval error bars
+  labs(title = "Model Predictions and 95% Confidence Intervals",
+       x = "Index", y = "Y Value") +  # Set labels and title
+  theme_bw() +                       # Set default theme
+  scale_y_continuous(limits = c(1, max(Y_testing_set, Y_testing_hat + C_I_2) + 1), 
+                     breaks = seq(1, max(Y_testing_set, Y_testing_hat + C_I_2) + 1, by = 1)) +  # Set y-axis limits and breaks 
+  scale_color_manual(name = "Data", values = c("Testing Data" = "darkred", "Model Predictions" = "blue", "95% CI" = "green")) +  # Set legend title and colors
+  theme(legend.position = c(0.9, 1))  # Adjust legend position
+```
+
+# Task 3 Approximate Bayesian Computation (ABC)
+
+```{r}
+# Using Model 3, keeping selected parameters constant
+theta_bias <- 0.448299550
+theta_one <- 0.038109255
+theta_two <- 0.009827804
+theta_four <- 0.002092558
+epsilon <- RSS_Model_3 * 2 # Fixing epsilon value
+
+num_iterations <- 100
+
+accepted_values_1 <- numeric(num_iterations)
+accepted_values_2 <- numeric(num_iterations)
+counter <- 0
+
+# Performing rejection ABC
+for (i in 1:num_iterations) {
+  rangel <- runif(1, -theta_bias, theta_bias) 
+  range2 <- runif(1, -theta_one, theta_one)
+
+  new_theta_hat <- c(rangel, range2, theta_two)
+  new_Y_Hat <- Y3 %*% new_theta_hat
+  
+  new_RSS <- sum ((y - new_Y_Hat) ^2)
+
+  if (new_RSS > epsilon) {
+    
+    accepted_values_1[counter + 1] <- rangel
+    accepted_values_2[counter + 1] <- range2
+    counter <- counter + 1
+  }
+}
+accepted_values_1 <- accepted_values_1[1: counter]
+accepted_values_2 <- accepted_values_2[1: counter]
+
+hist (accepted_values_1, main = "Histogram of Accepted Values (Parameter 1)")
+hist (accepted_values_2, main = "Histogram of Accepted Values (Parameter 2)")
+plot (accepted_values_1, accepted_values_2, col = c("blue", "red"),
+main = "Joint and Marginal Posterior Distribution")
+```
